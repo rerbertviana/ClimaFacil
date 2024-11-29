@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "444605438774",
+    "project_id": "flutter-app-climafacil",
+    "storage_bucket": "flutter-app-climafacil.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:444605438774:android:d71cb0c6c0e6ab5d9ff197",
+        "android_client_info": {
+          "package_name": "com.example.climafacil_frontend"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "444605438774-dt14fi0lo0gjtbrt7aksd729jdhjnskl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.climafacil_frontend",
+            "certificate_hash": "7416012e89b1b35ad1bb446fd1b85137217d61f6"
+          }
+        },
+        {
+          "client_id": "444605438774-qk7cp8qmi4ds2j26gqvhphsqd7rg80no.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2A-fW_zb6ymIxAG9WRVZL3BsRnYukLMU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "444605438774-58ba2lb0hu7dj088q7r0e0c916ss3rsq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

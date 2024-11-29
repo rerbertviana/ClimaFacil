@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../mock/weather_mock.dart';
 import '../details/weather_details.dart';
 
@@ -17,6 +18,10 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
   List<Map<String, dynamic>> weatherLazyData = [];
   int lastLoadedIndex = 6;
 
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  String? userNameGoogle = "";
+  String? userEmailGoogle = "";
+
   Future<void> _loadMoreItems() async {
     setState(() {
       isLoading = true;
@@ -31,6 +36,18 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
       isLoading = false;
     });
   }
+
+  Future<void> tryToGoogleLogin() async {
+    await _googleSignIn.signIn().then((value) {
+      userNameGoogle = value!.displayName;
+      userEmailGoogle = value.email;
+    });
+    print("Deu certo! $userNameGoogle");
+  }
+
+  // void tryToGoogleLogin() {
+  //   print("GOOGLE LOGIN");
+  // }
 
   @override
   void initState() {
@@ -102,13 +119,14 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
                 borderRadius: BorderRadius.circular(8), // Raio menor
               ),
             ),
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
-            },
+            onPressed: tryToGoogleLogin,
+            // onPressed: () {
+            //   Navigator.pop(context);
+            //   Navigator.push(
+            //     context,
+            //     MaterialPageRoute(builder: (context) => const LoginScreen()),
+            //   );
+            // },
             child: const Text('Fazer Login'),
           ),
         ],
