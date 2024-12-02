@@ -11,7 +11,10 @@ class WeatherDetailsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'DETALHES',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold, // Deixa o título com fonte grossa
+          ),
         ),
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
