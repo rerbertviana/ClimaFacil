@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../../mock/weather_mock.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:convert';
 import '../details/weather_details.dart';
-import '../../mock//brazilian_states.dart';
+import '../../utils/brazilian_states.dart';
 
 class WeatherFeedScreen extends StatefulWidget {
   const WeatherFeedScreen({super.key});
@@ -16,13 +18,86 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
   bool isFavorite = false;
   final ScrollController _scrollController = ScrollController();
   bool isLoading = false;
+  bool isLoadingData = true;
   List<Map<String, dynamic>> weatherLazyData = [];
+  List<Map<String, dynamic>> weatherData = [];
   int lastLoadedIndex = 6;
   String selectedState = 'Todos';
+  final baseUrlWeathers = dotenv.env['API_URL_WEATHERS'];
+  final baseUrlFavorites = dotenv.env['API_URL_FAVORITES'];
+  final baseUrlUsers = dotenv.env['API_URL_USERS'];
 
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   String? userNameGoogle = "";
   String? userEmailGoogle = "";
+  int? userId;
+
+  Future<void> loadData() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrlWeathers'));
+      if (isLoggedIn) {
+        try {
+          final responseFavorites =
+              await http.get(Uri.parse('$baseUrlFavorites/$userId'));
+          if (responseFavorites.statusCode == 200) {
+            List<Map<String, dynamic>> favoriteData =
+                List<Map<String, dynamic>>.from(
+                    jsonDecode(responseFavorites.body));
+            Set<int> favoriteIds =
+                favoriteData.map<int>((fav) => fav['weatherId'] as int).toSet();
+            List<Map<String, dynamic>> updatedWeathers =
+                weatherData.map((weather) {
+              return {
+                ...weather,
+                'favorite': favoriteIds.contains(weather['id'])
+              };
+            }).toList();
+            setState(() {
+              weatherData = updatedWeathers;
+              if (lastLoadedIndex == 6) {
+                weatherLazyData = weatherData.take(6).toList();
+              } else {
+                weatherLazyData = weatherData.take(lastLoadedIndex).toList();
+              }
+            });
+          }
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Erro ao apresentar lista de climas!'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      } else {
+        if (response.statusCode == 200) {
+          setState(() {
+            weatherData =
+                List<Map<String, dynamic>>.from(jsonDecode(response.body));
+            if (lastLoadedIndex == 6) {
+              weatherLazyData = weatherData.take(6).toList();
+            } else {
+              weatherLazyData = weatherData.take(lastLoadedIndex).toList();
+            }
+            isLoadingData = false;
+          });
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao apresentar lista de climas!'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 
   Future<void> _loadMoreItems() async {
     setState(() {
@@ -30,23 +105,48 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
     });
     await Future.delayed(const Duration(seconds: 2));
     setState(() {
-      weatherLazyData.addAll(weatherMockData.skip(lastLoadedIndex).take(6));
+      weatherLazyData.addAll(weatherData.skip(lastLoadedIndex).take(6));
       lastLoadedIndex = lastLoadedIndex + 6;
-      if (lastLoadedIndex >= weatherMockData.length) {
-        lastLoadedIndex = weatherMockData.length;
+      if (lastLoadedIndex >= weatherData.length) {
+        lastLoadedIndex = weatherData.length;
       }
       isLoading = false;
     });
   }
 
   Future<void> googleSignIn() async {
-    await _googleSignIn.signIn().then((value) {
+    await _googleSignIn.signIn().then((value) async {
       if (value != null) {
         userNameGoogle = value.displayName?.split(' ')[0];
         userEmailGoogle = value.email;
+        try {
+          final response = await http.post(
+            Uri.parse('$baseUrlUsers'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': userNameGoogle,
+              'email': userEmailGoogle,
+            }),
+          );
+          if (response.statusCode == 200) {
+            final userData = jsonDecode(response.body);
+            userId = userData['userId'];
+          }
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erro ao tentar realizar o login: $error'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
         setState(() {
           isLoggedIn = true;
         });
+        await loadData();
       }
     });
   }
@@ -108,9 +208,7 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
   @override
   void initState() {
     super.initState();
-    if (lastLoadedIndex == 6) {
-      weatherLazyData = weatherMockData.take(6).toList();
-    }
+    loadData();
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
           _scrollController.position.maxScrollExtent) {
@@ -185,6 +283,7 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
             onPressed: () async {
               await googleSignIn();
               if (isLoggedIn) {
+                // ignore: use_build_context_synchronously
                 Navigator.pop(context);
               }
             },
@@ -195,22 +294,90 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
     );
   }
 
-  void _handleFavorite(String city, Map<String, dynamic> weather) {
+  void _handleFavorite(String city, Map<String, dynamic> weather) async {
     if (isLoggedIn) {
-      setState(() {
-        weather['favorite'] = !(weather['favorite'] ?? false);
-        String message = weather['favorite']
-            ? '$city foi adicionada aos favoritos!'
-            : '$city foi removida dos favoritos!';
-        Color backgroundColor = weather['favorite'] ? Colors.green : Colors.red;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: backgroundColor,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      });
+      try {
+        bool isFavorite = weather['favorite'] ?? false;
+        if (isFavorite == true) {
+          final response = await http.delete(
+            Uri.parse('$baseUrlFavorites'),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'userId': userId,
+              'weatherId': weather['id'],
+            }),
+          );
+
+          if (response.statusCode == 200) {
+            await loadData();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$city foi removida dos favoritos!'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Erro ao remover favorito!'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          }
+        } else {
+          final response = await http.post(
+            Uri.parse('$baseUrlFavorites'),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'userId': userId,
+              'weatherId': weather['id'],
+            }),
+          );
+
+          if (response.statusCode == 201) {
+            await loadData();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$city foi adicionada aos favoritos!'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Erro ao adicionar favorito!'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao processar a solicitação!'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
     } else {
       _showLoginPopup('favoritecity');
     }
@@ -228,12 +395,11 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> filteredData = isFavorite
-        ? weatherLazyData
-            .where((weather) => weather['favorite'] == true)
-            .toList()
-        : weatherLazyData
+        ? weatherData.where((weather) => weather['favorite'] == true).toList()
+        : weatherData
             .where((weather) =>
-                selectedState == 'Todos' || weather['state'] == selectedState)
+                selectedState == 'Todos' ||
+                weather['state'] != null && weather['state'] == selectedState)
             .toList();
 
     return Scaffold(
@@ -371,10 +537,11 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
                       child: DropdownButton<String>(
                         value: selectedState,
                         isExpanded: true,
-                        onChanged: (String? newValue) {
+                        onChanged: (String? newValue) async {
                           setState(() {
                             selectedState = newValue!;
                           });
+                          await loadData();
                         },
                         items: brazilianStates
                             .map<DropdownMenuItem<String>>((String value) {
@@ -389,8 +556,13 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
                 ),
               ),
             ),
+          if (isLoadingData)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: CircularProgressIndicator(),
+            ),
           Expanded(
-            child: filteredData.isEmpty
+            child: filteredData.isEmpty && isLoadingData == false
                 ? Center(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -400,7 +572,7 @@ class _WeatherFeedScreenState extends State<WeatherFeedScreen> {
                               ? 'Sem favoritos no momento'
                               : 'Nenhum resultado para o estado selecionado',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: Colors.grey,
                           ),
